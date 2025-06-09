@@ -5,6 +5,7 @@ import { User } from "../models/userModel.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import jwt from 'jsonwebtoken'
+import { deleteAvatar } from "../utils/deleteAvatar.js";
 export const registerUseer = asyncHandler(async function (req, res) {
     //get details
     // validations
@@ -145,4 +146,55 @@ export const RefreshTheAcessToken = asyncHandler(async function () {
     } catch (error) {
         throw new ApiError(400, error.message)
     }
+})
+export const ChangeCurrentUserPassword = asyncHandler(async function (req, res) {
+    const { oldPassword, newPassword } = req.body
+    const user = await User.findById(req.user?._id)
+    const isPasswordCorrect = await user.isPasswordCorrect(oldPassword)
+    if (!isPasswordCorrect) {
+        throw new ApiError(404, 'Password does not match')
+    }
+    user.password = newPassword
+    await user.save({ validateBeforeSave: false })
+    return res.status(200).json(
+        new ApiResponse(200, {}, 'Password changed success!!!!')
+    )
+})
+export const getCurrentUser = asyncHandler(async function (req, res) {
+    return res.status(200).json(
+        new ApiResponse(200, req.user, 'Current user fetched!!!')
+    )
+})
+export const updateAccounthHandler = asyncHandler(async function (req, res) {
+    const { fullname, email } = req.body;
+    if (!(fullname || email)) {
+        throw new ApiError(400, 'Fullname or email required')
+    }
+    const user = await User.findByIdAndUpdate(req.user?._id, {
+        $set: { fullname, email: email }
+    }, { new: true }).select('-password')
+    return res.status(200).json(
+        new ApiResponse(200, user, 'Details changed success!!!')
+    )
+})
+export const updateAvatar = asyncHandler(async function (req, res) {
+    const avatrLocalPath = req.file?.path
+    if (!avatrLocalPath) {
+        throw new ApiError(400, 'File missing')
+    }
+    //https://cdn.example/uploads/avatar123.png
+    if (req.user?.avatar) {
+        const publicId = req.user.avatar.split('/').pop().split('.')[0]
+        await deleteAvatar(publicId)
+    }
+    const upload = await uploadOnCloudinary(avatrLocalPath)
+    if (!upload.url) {
+        throw new ApiError(500, 'Error while uploading to cloud,Try again please!!!!')
+    }
+    const user = await User.findByIdAndUpdate(req.user?._id, {
+        $set: { avatar: upload.url }
+    }, { new: true }).select('-password')
+    return res.status(200).json(
+        new ApiResponse(200, user, 'Avatar File changed success!!!!')
+    )
 })
